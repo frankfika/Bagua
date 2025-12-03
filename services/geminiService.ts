@@ -523,7 +523,7 @@ export const generateBaziAnalysis = async (input: UserInput): Promise<BaziResult
 
 export const chatWithMaster = async (message: string): Promise<string> => {
   if (!currentAnalysisData || chatHistory.length === 0) {
-    throw new Error("会话未初始化。");
+    return "请先完成八字排盘分析，贫道方能为您解惑。";
   }
 
   chatHistory.push({
