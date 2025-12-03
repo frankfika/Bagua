@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1c1917" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="专业智能八字排盘 - 精准命理分析" />
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icon-192.svg">
+
+    <title>禅 · 八字排盘</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600;700&family=Cinzel:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              serif: ['"Noto Serif SC"', 'serif'],
+              display: ['"Cinzel"', 'serif'],
+            },
+            colors: {
+              'ink': '#1c1917',
+              'paper': '#faf9f7',
+              'gold': '#d4a855',
+              'gold-light': '#e8c97a',
+              'cinnabar': '#c53030',
+              'red-seal': '#b91c1c',
+              'jade': '#059669',
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'fade-in-up': 'fadeInUp 0.6s ease-out',
+              'slide-up': 'slideUp 0.4s ease-out',
+              'pulse-slow': 'pulse 3s infinite',
+              'shimmer': 'shimmer 2s linear infinite',
+              'float': 'float 3s ease-in-out infinite',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(100%)' },
+                '100%': { transform: 'translateY(0)' },
+              },
+              shimmer: {
+                '0%': { backgroundPosition: '-200% 0' },
+                '100%': { backgroundPosition: '200% 0' },
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' },
+              }
+            },
+            boxShadow: {
+              'inner-lg': 'inset 0 2px 10px 0 rgba(0, 0, 0, 0.1)',
+              'glow': '0 0 20px rgba(212, 168, 85, 0.3)',
+              'glow-red': '0 0 20px rgba(185, 28, 28, 0.2)',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      * {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      body {
+        background: linear-gradient(135deg, #faf9f7 0%, #f5f4f0 50%, #eae8e4 100%);
+        color: #1c1917;
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+      }
+
+      html {
+        height: -webkit-fill-available;
+      }
+
+      /* Selection style */
+      ::selection {
+        background: #b91c1c;
+        color: white;
+      }
+
+      /* Disable text selection for app-like feel */
+      * {
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      input, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #d6d3d1;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #a8a29e;
+      }
+
+      /* Hide scrollbar on mobile */
+      @media (max-width: 768px) {
+        ::-webkit-scrollbar {
+          display: none;
+        }
+        * {
+          scrollbar-width: none;
+        }
+      }
+
+      /* Custom animations */
+      .animate-fade-in {
+        animation: fadeIn 0.5s ease-out;
+      }
+      .animate-fade-in-up {
+        animation: fadeInUp 0.6s ease-out;
+      }
+
+      /* Gradient text */
+      .text-gradient {
+        background: linear-gradient(135deg, #d4a855 0%, #e8c97a 50%, #d4a855 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      /* Glass effect */
+      .glass {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      /* Paper texture */
+      .paper-texture {
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      }
+
+      /* Ink wash effect */
+      .ink-wash {
+        background: linear-gradient(180deg, transparent 0%, rgba(28, 25, 23, 0.02) 100%);
+      }
+
+      /* Number input styling */
+      input[type="number"]::-webkit-inner-spin-button,
+      input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      input[type="number"] {
+        -moz-appearance: textfield;
+      }
+
+      /* Focus ring */
+      .focus-ring:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(212, 168, 85, 0.3);
+      }
+
+      /* Smooth transitions */
+      .transition-smooth {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      /* Loading shimmer */
+      .shimmer {
+        background: linear-gradient(90deg, #f5f4f0 25%, #e8e6e3 50%, #f5f4f0 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+      }
+
+      /* Touch feedback */
+      @media (hover: none) {
+        .touch-feedback:active {
+          transform: scale(0.98);
+          opacity: 0.9;
+        }
+      }
+
+      /* Safe area padding */
+      .safe-top {
+        padding-top: max(0.75rem, env(safe-area-inset-top));
+      }
+      .safe-bottom {
+        padding-bottom: max(1rem, env(safe-area-inset-bottom));
+      }
+      .safe-left {
+        padding-left: env(safe-area-inset-left);
+      }
+      .safe-right {
+        padding-right: env(safe-area-inset-right);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

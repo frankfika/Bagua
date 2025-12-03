@@ -1,0 +1,7 @@
+{
+  "name": "禅·八字",
+  "description": "基于 AI 的专业八字排盘与命理分析工具，提供深度的性格、事业与运势解读。",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
