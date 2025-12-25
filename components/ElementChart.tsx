@@ -33,7 +33,7 @@ const ElementChart: React.FC<ElementChartProps> = ({ elements }) => {
         <ResponsiveContainer width="100%" height={250} minWidth={200}>
           <PieChart>
             <Pie
-              data={data}
+              data={data as any}
               cx="50%"
               cy="50%"
               innerRadius={60}

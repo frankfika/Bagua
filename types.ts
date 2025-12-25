@@ -9,6 +9,7 @@ export interface Pillar {
   element: string; // Na Yin (e.g., 海中金)
   gods: string[]; // Ten Gods associated (e.g., 比肩)
   hiddenStems?: string[]; // Cang Gan in the branch
+  hiddenStemGods?: string[]; // Ten Gods of hidden stems (藏干十神)
   shenSha?: string[]; // Symbolic Stars (e.g., 桃花, 驿马, 天乙贵人)
 }
 
@@ -26,6 +27,41 @@ export interface AnalysisSection {
   predictions?: string[]; // Specific future predictions (used in Fortune/Career)
   advice?: string[]; // Actionable advice
   score?: number; // 0-100 score for this aspect
+}
+
+// 流年信息
+export interface LiuNianInfo {
+  year: number;          // 公历年份
+  age: number;           // 虚岁
+  ganZhi: string;        // 干支 (如 "甲子")
+}
+
+// 大运信息
+export interface DaYunInfo {
+  ganZhi: string;        // 大运干支
+  startAge: number;      // 起运虚岁
+  endAge: number;        // 结束虚岁
+  startYear: number;     // 起运公历年
+  endYear: number;       // 结束公历年
+  liuNian: LiuNianInfo[]; // 该大运内的流年
+}
+
+// 真太阳时信息
+export interface TrueSolarTimeInfo {
+  trueSolarTime: string;     // 真太阳时 HH:mm
+  originalTime: string;      // 原始输入时间
+  totalCorrection: number;   // 总修正分钟数
+  longitudeCorrection: number; // 经度修正
+  equationOfTime: number;    // 均时差
+  explanation: string;       // 说明
+}
+
+// 格局信息
+export interface PatternInfo {
+  mainPattern: string;       // 主格局
+  subPatterns: string[];     // 辅助格局
+  description: string;       // 格局说明
+  level: 'high' | 'medium' | 'low'; // 格局层次
 }
 
 export interface BaziResult {
@@ -55,6 +91,14 @@ export interface BaziResult {
   luckyColors: string[];
   luckyNumbers: string[];
   luckyDirections: string[];
+
+  // 新增字段
+  trueSolarTimeInfo?: TrueSolarTimeInfo; // 真太阳时详情
+  shichenWarning?: string;    // 时辰变化警告
+  daYun?: DaYunInfo[];        // 大运信息 (10个大运)
+  daYunStartAge?: number;     // 起运年龄
+  currentDaYun?: DaYunInfo;   // 当前大运
+  pattern?: PatternInfo;      // 格局信息
 }
 
 export interface UserInput {

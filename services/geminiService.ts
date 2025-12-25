@@ -1,9 +1,24 @@
-import { UserInput, BaziResult, Pillar, BaziChartData } from "../types";
+import { UserInput, BaziResult, Pillar, BaziChartData, DaYunInfo, LiuNianInfo } from "../types";
 // @ts-ignore
 import { Solar, Lunar, EightChar } from "lunar-javascript";
+import { calculateTrueSolarTime, checkShichenBoundary, TrueSolarTimeResult } from "../utils/trueSolarTime";
+import {
+  TIANYI_GUIREN, TAIJI_GUIREN, TIANDE, YUEDE, WENCHANG, GUOYIN, JINYU,
+  TIANGUAN, FUXING, LUSHEN, YIMA, HUAGAI, JIANGXING, YANGREN, TAOHUA,
+  HONGYAN, JIESHA, ZAISHA, WANGSHEN, GUCHEN, GUASU, TIANLUO, DIWANG,
+  getShenShaInfo
+} from "../knowledge/shensha";
+import { determinePattern, judgeDayMasterStrength } from "../utils/pattern";
 
+// API 端点 - 生产环境使用 Vercel Edge Function，开发环境可直接调用
+const API_BASE_URL = import.meta.env.PROD ? '' : '';
+const ANALYZE_API_URL = `${API_BASE_URL}/api/analyze`;
+const CHAT_API_URL = `${API_BASE_URL}/api/chat`;
+
+// 开发环境备用 (如果需要本地测试可使用)
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_API_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY || process.env.VITE_DEEPSEEK_API_KEY || "";
+const USE_DIRECT_API = !import.meta.env.PROD && DEEPSEEK_API_KEY; // 开发时直接调用
 
 // Store chat history for follow-up conversations
 let chatHistory: Array<{ role: string; content: string }> = [];
@@ -41,62 +56,17 @@ const HIDDEN_STEMS: Record<string, string[]> = {
   "亥": ["壬", "甲"]
 };
 
-// ==================== 神煞计算 ====================
+// ==================== 神煞计算 (使用扩展知识库) ====================
 
-// 天乙贵人表（按日干查）
-const TIANYI_GUIREN: Record<string, string[]> = {
-  "甲": ["丑", "未"], "戊": ["丑", "未"],
-  "乙": ["子", "申"], "己": ["子", "申"],
-  "丙": ["亥", "酉"], "丁": ["亥", "酉"],
-  "庚": ["丑", "未"],
-  "辛": ["寅", "午"],
-  "壬": ["卯", "巳"], "癸": ["卯", "巳"]
-};
-
-// 文昌贵人表（按日干查）
-const WENCHANG: Record<string, string> = {
-  "甲": "巳", "乙": "午", "丙": "申", "丁": "酉", "戊": "申",
-  "己": "酉", "庚": "亥", "辛": "子", "壬": "寅", "癸": "卯"
-};
-
-// 驿马表（按年支/日支查）
-const YIMA: Record<string, string> = {
-  "寅": "申", "午": "申", "戌": "申",  // 寅午戌见申为驿马
-  "申": "寅", "子": "寅", "辰": "寅",  // 申子辰见寅为驿马
-  "巳": "亥", "酉": "亥", "丑": "亥",  // 巳酉丑见亥为驿马
-  "亥": "巳", "卯": "巳", "未": "巳"   // 亥卯未见巳为驿马
-};
-
-// 桃花表（按年支/日支查）
-const TAOHUA: Record<string, string> = {
-  "寅": "卯", "午": "卯", "戌": "卯",  // 寅午戌见卯为桃花
-  "申": "酉", "子": "酉", "辰": "酉",  // 申子辰见酉为桃花
-  "巳": "午", "酉": "午", "丑": "午",  // 巳酉丑见午为桃花
-  "亥": "子", "卯": "子", "未": "子"   // 亥卯未见子为桃花
-};
-
-// 华盖表（按年支/日支查）
-const HUAGAI: Record<string, string> = {
-  "寅": "戌", "午": "戌", "戌": "戌",
-  "申": "辰", "子": "辰", "辰": "辰",
-  "巳": "丑", "酉": "丑", "丑": "丑",
-  "亥": "未", "卯": "未", "未": "未"
-};
-
-// 羊刃表（按日干查）
-const YANGREN: Record<string, string> = {
-  "甲": "卯", "丙": "午", "戊": "午",
-  "庚": "酉", "壬": "子"
-};
-
-// 禄神表（按日干查）
-const LUSHEN: Record<string, string> = {
-  "甲": "寅", "乙": "卯", "丙": "巳", "丁": "午", "戊": "巳",
-  "己": "午", "庚": "申", "辛": "酉", "壬": "亥", "癸": "子"
-};
-
-// 计算神煞
-function calculateShenSha(dayStem: string, dayBranch: string, yearBranch: string, allBranches: string[]): {
+// 计算神煞 - 扩展版 (20+种神煞)
+function calculateShenSha(
+  dayStem: string,
+  dayBranch: string,
+  yearBranch: string,
+  monthBranch: string,
+  allBranches: string[],
+  gender: 'Male' | 'Female' = 'Male'
+): {
   yearShenSha: string[];
   monthShenSha: string[];
   dayShenSha: string[];
@@ -113,14 +83,46 @@ function calculateShenSha(dayStem: string, dayBranch: string, yearBranch: string
   allBranches.forEach((branch, index) => {
     const shenShaList: string[] = [];
 
-    // 天乙贵人
+    // ===== 吉神 =====
+
+    // 天乙贵人（按日干查）
     if (TIANYI_GUIREN[dayStem]?.includes(branch)) {
       shenShaList.push("天乙贵人");
     }
 
-    // 文昌
+    // 太极贵人（按日干查）
+    if (TAIJI_GUIREN[dayStem]?.includes(branch)) {
+      shenShaList.push("太极贵人");
+    }
+
+    // 文昌贵人（按日干查）
     if (WENCHANG[dayStem] === branch) {
       shenShaList.push("文昌");
+    }
+
+    // 国印贵人（按日干查）
+    if (GUOYIN[dayStem] === branch) {
+      shenShaList.push("国印");
+    }
+
+    // 金舆（按日干查）
+    if (JINYU[dayStem] === branch) {
+      shenShaList.push("金舆");
+    }
+
+    // 天官贵人（按日干查）
+    if (TIANGUAN[dayStem] === branch) {
+      shenShaList.push("天官");
+    }
+
+    // 福星贵人（按日干查）
+    if (FUXING[dayStem] === branch) {
+      shenShaList.push("福星");
+    }
+
+    // 禄神（按日干查）
+    if (LUSHEN[dayStem] === branch) {
+      shenShaList.push("禄神");
     }
 
     // 驿马（按年支或日支查）
@@ -128,24 +130,66 @@ function calculateShenSha(dayStem: string, dayBranch: string, yearBranch: string
       shenShaList.push("驿马");
     }
 
-    // 桃花（按年支或日支查）
-    if (TAOHUA[yearBranch] === branch || TAOHUA[dayBranch] === branch) {
-      shenShaList.push("桃花");
-    }
-
     // 华盖（按年支或日支查）
     if (HUAGAI[yearBranch] === branch || HUAGAI[dayBranch] === branch) {
       shenShaList.push("华盖");
     }
 
-    // 羊刃
+    // 将星（按年支或日支查）
+    if (JIANGXING[yearBranch] === branch || JIANGXING[dayBranch] === branch) {
+      shenShaList.push("将星");
+    }
+
+    // ===== 凶神 =====
+
+    // 羊刃（按日干查，阳干才有）
     if (YANGREN[dayStem] === branch) {
       shenShaList.push("羊刃");
     }
 
-    // 禄神
-    if (LUSHEN[dayStem] === branch) {
-      shenShaList.push("禄神");
+    // 桃花（按年支或日支查）
+    if (TAOHUA[yearBranch] === branch || TAOHUA[dayBranch] === branch) {
+      shenShaList.push("桃花");
+    }
+
+    // 红艳煞（按日干查）
+    if (HONGYAN[dayStem] === branch) {
+      shenShaList.push("红艳");
+    }
+
+    // 劫煞（按年支或日支查）
+    if (JIESHA[yearBranch] === branch || JIESHA[dayBranch] === branch) {
+      shenShaList.push("劫煞");
+    }
+
+    // 灾煞（按年支或日支查）
+    if (ZAISHA[yearBranch] === branch || ZAISHA[dayBranch] === branch) {
+      shenShaList.push("灾煞");
+    }
+
+    // 亡神（按年支或日支查）
+    if (WANGSHEN[yearBranch] === branch || WANGSHEN[dayBranch] === branch) {
+      shenShaList.push("亡神");
+    }
+
+    // 孤辰（按年支查）
+    if (GUCHEN[yearBranch] === branch) {
+      shenShaList.push("孤辰");
+    }
+
+    // 寡宿（按年支查）
+    if (GUASU[yearBranch] === branch) {
+      shenShaList.push("寡宿");
+    }
+
+    // 天罗（按日支查，主男命）
+    if (index === 2 && TIANLUO[branch] && gender === 'Male') {
+      shenShaList.push("天罗");
+    }
+
+    // 地网（按日支查，主女命）
+    if (index === 2 && DIWANG[branch] && gender === 'Female') {
+      shenShaList.push("地网");
     }
 
     // 分配到对应柱
@@ -157,7 +201,16 @@ function calculateShenSha(dayStem: string, dayBranch: string, yearBranch: string
     }
   });
 
+  // 检查天德月德（按月支查，看是否在四柱中有对应天干）
+  // 这些特殊神煞需要天干匹配，暂简化处理
+
   return { yearShenSha, monthShenSha, dayShenSha, hourShenSha };
+}
+
+// 计算地支藏干的十神
+function getHiddenStemTenGods(dayStem: string, branch: string): string[] {
+  const hiddenStems = HIDDEN_STEMS[branch] || [];
+  return hiddenStems.map(stem => getTenGod(dayStem, stem)).filter(Boolean);
 }
 
 // 计算十神
@@ -197,8 +250,94 @@ function getTenGod(dayStem: string, targetStem: string): string {
   return "";
 }
 
+// 计算大运流年
+function calculateDaYunLiuNian(
+  solar: any,
+  gender: 'Male' | 'Female',
+  birthYear: number
+): {
+  daYunStartAge: number;
+  daYun: DaYunInfo[];
+  currentDaYun: DaYunInfo | null;
+} {
+  try {
+    const lunar = solar.getLunar();
+    const eightChar = lunar.getEightChar();
+
+    // gender: 1=男, 0=女
+    const genderNum = gender === 'Male' ? 1 : 0;
+    // sect: 起运宗法 (2=按年干阴阳判断顺逆)
+    const yun = eightChar.getYun(genderNum, 2);
+
+    const startAge = yun.getStartYear();
+    const currentYear = new Date().getFullYear();
+    const currentAge = currentYear - birthYear + 1; // 虚岁
+
+    // 获取10个大运
+    const daYunList = yun.getDaYun();
+    const daYunInfoList: DaYunInfo[] = [];
+    let currentDaYun: DaYunInfo | null = null;
+
+    for (let i = 0; i < Math.min(daYunList.length, 10); i++) {
+      const dy = daYunList[i];
+      const dyStartAge = dy.getStartAge();
+      const dyEndAge = dy.getEndAge();
+      const dyStartYear = birthYear + dyStartAge - 1;
+      const dyEndYear = birthYear + dyEndAge - 1;
+
+      // 获取该大运内的流年
+      const liuNianList = dy.getLiuNian();
+      const liuNianInfoList: LiuNianInfo[] = [];
+
+      for (let j = 0; j < liuNianList.length; j++) {
+        const ln = liuNianList[j];
+        liuNianInfoList.push({
+          year: ln.getYear(),
+          age: ln.getAge(),
+          ganZhi: ln.getGanZhi()
+        });
+      }
+
+      const daYunInfo: DaYunInfo = {
+        ganZhi: dy.getGanZhi(),
+        startAge: dyStartAge,
+        endAge: dyEndAge,
+        startYear: dyStartYear,
+        endYear: dyEndYear,
+        liuNian: liuNianInfoList
+      };
+
+      daYunInfoList.push(daYunInfo);
+
+      // 判断是否是当前大运
+      if (currentAge >= dyStartAge && currentAge <= dyEndAge) {
+        currentDaYun = daYunInfo;
+      }
+    }
+
+    return {
+      daYunStartAge: startAge,
+      daYun: daYunInfoList,
+      currentDaYun
+    };
+  } catch (error) {
+    console.error('大运计算错误:', error);
+    return {
+      daYunStartAge: 0,
+      daYun: [],
+      currentDaYun: null
+    };
+  }
+}
+
 // 计算五行分布
-function calculateFiveElements(chart: BaziChartData): Record<string, number> {
+function calculateFiveElements(chart: BaziChartData): {
+  wood: number;
+  fire: number;
+  earth: number;
+  metal: number;
+  water: number;
+} {
   const counts: Record<string, number> = { "木": 0, "火": 0, "土": 0, "金": 0, "水": 0 };
 
   const pillars = [chart.year, chart.month, chart.day, chart.hour];
@@ -227,11 +366,28 @@ function calculateBaziChart(birthDate: string, birthTime: string, longitude?: nu
   dayStem: string;
   solarTerm: string;
   lunarDate: string;
+  trueSolarTimeInfo: TrueSolarTimeResult | null;
+  shichenWarning: string | null;
 } {
   const [year, month, day] = birthDate.split("-").map(Number);
-  const [hour, minute] = birthTime.split(":").map(Number);
+  let [hour, minute] = birthTime.split(":").map(Number);
 
-  // 创建阳历对象
+  // 真太阳时计算
+  let trueSolarTimeInfo: TrueSolarTimeResult | null = null;
+  let shichenWarning: string | null = null;
+  let actualTime = birthTime;
+
+  if (longitude !== undefined && longitude !== null) {
+    const birthDateObj = new Date(year, month - 1, day);
+    trueSolarTimeInfo = calculateTrueSolarTime(birthTime, longitude, birthDateObj);
+    actualTime = trueSolarTimeInfo.trueSolarTime;
+    shichenWarning = checkShichenBoundary(birthTime, actualTime);
+
+    // 使用真太阳时
+    [hour, minute] = actualTime.split(":").map(Number);
+  }
+
+  // 创建阳历对象 (使用真太阳时)
   const solar = Solar.fromYmdHms(year, month, day, hour, minute, 0);
 
   // 获取八字
@@ -263,13 +419,13 @@ function calculateBaziChart(birthDate: string, birthTime: string, longitude?: nu
   const jieQi = lunar.getPrevJieQi();
   const solarTerm = jieQi ? `${jieQi.getName()}` : "";
 
-  // 计算神煞
+  // 计算神煞 (使用扩展神煞库)
   const allBranches = [yearBranch, monthBranch, dayBranch, hourBranch];
   const { yearShenSha, monthShenSha, dayShenSha, hourShenSha } = calculateShenSha(
-    dayStem, dayBranch, yearBranch, allBranches
+    dayStem, dayBranch, yearBranch, monthBranch, allBranches
   );
 
-  // 构建四柱
+  // 构建四柱 (含藏干十神)
   const chart: BaziChartData = {
     year: {
       stem: yearStem,
@@ -277,6 +433,7 @@ function calculateBaziChart(birthDate: string, birthTime: string, longitude?: nu
       element: yearNaYin,
       gods: [getTenGod(dayStem, yearStem)].filter(Boolean),
       hiddenStems: HIDDEN_STEMS[yearBranch] || [],
+      hiddenStemGods: getHiddenStemTenGods(dayStem, yearBranch),
       shenSha: yearShenSha
     },
     month: {
@@ -285,6 +442,7 @@ function calculateBaziChart(birthDate: string, birthTime: string, longitude?: nu
       element: monthNaYin,
       gods: [getTenGod(dayStem, monthStem)].filter(Boolean),
       hiddenStems: HIDDEN_STEMS[monthBranch] || [],
+      hiddenStemGods: getHiddenStemTenGods(dayStem, monthBranch),
       shenSha: monthShenSha
     },
     day: {
@@ -293,6 +451,7 @@ function calculateBaziChart(birthDate: string, birthTime: string, longitude?: nu
       element: dayNaYin,
       gods: ["日主"],
       hiddenStems: HIDDEN_STEMS[dayBranch] || [],
+      hiddenStemGods: getHiddenStemTenGods(dayStem, dayBranch),
       shenSha: dayShenSha
     },
     hour: {
@@ -301,6 +460,7 @@ function calculateBaziChart(birthDate: string, birthTime: string, longitude?: nu
       element: hourNaYin,
       gods: [getTenGod(dayStem, hourStem)].filter(Boolean),
       hiddenStems: HIDDEN_STEMS[hourBranch] || [],
+      hiddenStemGods: getHiddenStemTenGods(dayStem, hourBranch),
       shenSha: hourShenSha
     }
   };
@@ -309,13 +469,15 @@ function calculateBaziChart(birthDate: string, birthTime: string, longitude?: nu
     chart,
     dayStem,
     solarTerm,
-    lunarDate: lunar.toString()
+    lunarDate: lunar.toString(),
+    trueSolarTimeInfo,
+    shichenWarning
   };
 }
 
 export const generateBaziAnalysis = async (input: UserInput): Promise<BaziResult> => {
   // 使用 lunar-javascript 精确计算八字
-  const { chart, dayStem, solarTerm, lunarDate } = calculateBaziChart(
+  const { chart, dayStem, solarTerm, lunarDate, trueSolarTimeInfo, shichenWarning } = calculateBaziChart(
     input.birthDate,
     input.birthTime,
     input.longitude
@@ -324,6 +486,21 @@ export const generateBaziAnalysis = async (input: UserInput): Promise<BaziResult
   const fiveElements = calculateFiveElements(chart);
   const dayMasterElement = STEM_ELEMENTS[dayStem] || "未知";
 
+  // 计算大运流年
+  const [birthYear] = input.birthDate.split("-").map(Number);
+  const solar = Solar.fromYmdHms(
+    birthYear,
+    parseInt(input.birthDate.split("-")[1]),
+    parseInt(input.birthDate.split("-")[2]),
+    parseInt((trueSolarTimeInfo?.trueSolarTime || input.birthTime).split(":")[0]),
+    parseInt((trueSolarTimeInfo?.trueSolarTime || input.birthTime).split(":")[1]),
+    0
+  );
+  const { daYunStartAge, daYun, currentDaYun } = calculateDaYunLiuNian(solar, input.gender, birthYear);
+
+  // 计算格局
+  const patternInfo = determinePattern(dayStem, chart);
+
   // 构建八字字符串用于 AI 分析
   const baziString = `${chart.year.stem}${chart.year.branch} ${chart.month.stem}${chart.month.branch} ${chart.day.stem}${chart.day.branch} ${chart.hour.stem}${chart.hour.branch}`;
 
@@ -331,40 +508,82 @@ export const generateBaziAnalysis = async (input: UserInput): Promise<BaziResult
     ? `${input.birthLocation} (经度: ${input.longitude})`
     : input.birthLocation;
 
-  // 让 AI 只做解读分析，不计算八字
+  // 构建大运信息字符串
+  const currentDaYunStr = currentDaYun
+    ? `当前大运: ${currentDaYun.ganZhi} (${currentDaYun.startAge}-${currentDaYun.endAge}岁)`
+    : "";
+  const daYunListStr = daYun.slice(0, 5).map(d =>
+    `${d.ganZhi}(${d.startAge}-${d.endAge}岁)`
+  ).join(" → ");
+
+  // 构建藏干十神信息
+  const hiddenGodsStr = [
+    `年支藏干十神: ${chart.year.hiddenStemGods?.join(",") || "无"}`,
+    `月支藏干十神: ${chart.month.hiddenStemGods?.join(",") || "无"}`,
+    `日支藏干十神: ${chart.day.hiddenStemGods?.join(",") || "无"}`,
+    `时支藏干十神: ${chart.hour.hiddenStemGods?.join(",") || "无"}`
+  ].join("\n    ");
+
+  // 构建神煞信息
+  const allShenSha = [
+    ...chart.year.shenSha || [],
+    ...chart.month.shenSha || [],
+    ...chart.day.shenSha || [],
+    ...chart.hour.shenSha || []
+  ];
+  const shenShaStr = [...new Set(allShenSha)].join("、") || "无明显神煞";
+
+  // 专业版 AI Prompt - 混合模式（默认通俗，带专业解释）
   const prompt = `
-    你是一位资深的八字命理大师。以下是已经通过专业排盘软件计算出的八字信息，请你进行深入的命理分析和解读。
+# 角色定位
+你是一位精通子平八字命理的资深命理师，拥有40年实战经验。你的分析特点：
+- 表达方式：通俗易懂，但关键处使用专业术语并附解释
+- 分析深度：从命局结构、格局、十神配置等维度系统分析
+- 判断依据：每个结论都要说明推导依据，让用户理解"为什么"
 
-    **用户信息：**
-    - 姓名: ${input.name}
-    - 性别: ${input.gender === 'Male' ? '男' : '女'}
-    - 出生日期: ${input.birthDate}
-    - 出生时间: ${input.birthTime}
-    - 出生地点: ${locationString}
-    - 农历: ${lunarDate}
-    - 节气: ${solarTerm}
+# 命主信息
+- 姓名: ${input.name}
+- 性别: ${input.gender === 'Male' ? '乾造（男）' : '坤造（女）'}
+- 出生日期: ${input.birthDate}
+- 出生时间: ${trueSolarTimeInfo ? `${trueSolarTimeInfo.trueSolarTime}（真太阳时，${trueSolarTimeInfo.explanation}）` : input.birthTime}
+- 出生地点: ${locationString}
+- 农历: ${lunarDate}
+- 节气: ${solarTerm}
 
-    **八字排盘结果（已精确计算）：**
-    - 完整八字: ${baziString}
-    - 年柱: ${chart.year.stem}${chart.year.branch} (${chart.year.element}) - 十神: ${chart.year.gods.join(",")}
-    - 月柱: ${chart.month.stem}${chart.month.branch} (${chart.month.element}) - 十神: ${chart.month.gods.join(",")}
-    - 日柱: ${chart.day.stem}${chart.day.branch} (${chart.day.element}) - 日主
-    - 时柱: ${chart.hour.stem}${chart.hour.branch} (${chart.hour.element}) - 十神: ${chart.hour.gods.join(",")}
-    - 日主: ${dayStem} (${dayMasterElement})
-    - 五行分布: 木${fiveElements.wood}% 火${fiveElements.fire}% 土${fiveElements.earth}% 金${fiveElements.metal}% 水${fiveElements.water}%
+# 八字排盘（已精确计算）
+**四柱干支：** ${baziString}
+- 年柱: ${chart.year.stem}${chart.year.branch} (${chart.year.element}) | 天干十神: ${chart.year.gods.join(",")} | 藏干: ${chart.year.hiddenStems?.join(",")}
+- 月柱: ${chart.month.stem}${chart.month.branch} (${chart.month.element}) | 天干十神: ${chart.month.gods.join(",")} | 藏干: ${chart.month.hiddenStems?.join(",")}
+- 日柱: ${chart.day.stem}${chart.day.branch} (${chart.day.element}) | 日主 | 藏干: ${chart.day.hiddenStems?.join(",")}
+- 时柱: ${chart.hour.stem}${chart.hour.branch} (${chart.hour.element}) | 天干十神: ${chart.hour.gods.join(",")} | 藏干: ${chart.hour.hiddenStems?.join(",")}
 
-    **请分析以下内容，全部使用简体中文输出：**
+**藏干十神：**
+    ${hiddenGodsStr}
 
-    1. **日主强弱判断**：根据月令、四柱干支分析日主的强弱
-    2. **喜用神和忌神**：判断命局的喜用神和忌神
-    3. **神煞分析**：计算主要的神煞（天乙贵人、文昌、驿马、桃花、华盖等）
-    4. **性格分析**：根据日主和格局分析性格特点
-    5. **事业分析**：分析适合的事业方向和发展建议
-    6. **财运分析**：分析财运特点和理财建议
-    7. **感情分析**：分析感情婚姻运势
-    8. **健康分析**：根据五行分析需要注意的健康问题
-    9. **未来运势**：2025-2028年的流年运势预测
-    10. **开运建议**：幸运颜色、幸运数字、幸运方位
+**日主信息：** ${dayStem}${dayMasterElement}日主
+**五行分布：** 木${fiveElements.wood}% 火${fiveElements.fire}% 土${fiveElements.earth}% 金${fiveElements.metal}% 水${fiveElements.water}%
+
+# 格局判定（已计算）
+- 主格局: ${patternInfo.mainPattern}
+- 辅助格局: ${patternInfo.subPatterns.join("、") || "无"}
+- 格局说明: ${patternInfo.description}
+
+# 神煞（已计算）
+${shenShaStr}
+
+# 大运信息
+- 起运年龄: ${daYunStartAge}岁起运
+- ${currentDaYunStr}
+- 大运轨迹: ${daYunListStr}
+
+# 分析要求
+
+请基于以上信息进行深入分析。注意：
+1. **日主强弱**：结合月令（${chart.month.branch}月）、四柱干支综合判断
+2. **喜忌用神**：根据日主强弱和格局需求，明确说明取用依据
+3. **每个结论必须说明依据**：例如"因月令${chart.month.branch}为X，日主得/失令，故判断身强/弱"
+4. **流年预测需具体**：2025-2028年逐年分析，结合大运和流年干支
+5. **建议要实用可行**：不要笼统的"多休息"，要具体到方向/行业/时间
 
     请以 JSON 格式输出，结构如下：
     {
@@ -431,28 +650,41 @@ export const generateBaziAnalysis = async (input: UserInput): Promise<BaziResult
   `;
 
   try {
-    const response = await fetch(DEEPSEEK_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${DEEPSEEK_API_KEY}`
+    const messages = [
+      {
+        role: "system",
+        content: "你是一位专业的八字命理大师，精通传统命理学。请只输出 JSON 格式，不要包含 markdown 代码块标记。"
       },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          {
-            role: "system",
-            content: "你是一位专业的八字命理大师，精通传统命理学。请只输出 JSON 格式，不要包含 markdown 代码块标记。"
+      {
+        role: "user",
+        content: prompt
+      }
+    ];
+
+    // 根据环境选择 API 调用方式
+    const response = USE_DIRECT_API
+      ? await fetch(DEEPSEEK_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${DEEPSEEK_API_KEY}`
           },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        response_format: { type: "json_object" }
-      })
-    });
+          body: JSON.stringify({
+            model: "deepseek-chat",
+            messages,
+            temperature: 0.3,
+            response_format: { type: "json_object" }
+          })
+        })
+      : await fetch(ANALYZE_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages,
+            temperature: 0.3,
+            response_format: { type: "json_object" }
+          })
+        });
 
     if (!response.ok) {
       const errorData = await response.text();
@@ -473,8 +705,18 @@ export const generateBaziAnalysis = async (input: UserInput): Promise<BaziResult
       dayMaster: dayStem,
       dayMasterElement: dayMasterElement,
       strength: aiAnalysis.strength || "待分析",
-      solarTimeAdjusted: input.birthTime,
+      solarTimeAdjusted: trueSolarTimeInfo?.trueSolarTime || input.birthTime,
       solarTerm: solarTerm,
+      // 真太阳时信息
+      trueSolarTimeInfo: trueSolarTimeInfo ? {
+        trueSolarTime: trueSolarTimeInfo.trueSolarTime,
+        originalTime: trueSolarTimeInfo.originalTime,
+        totalCorrection: trueSolarTimeInfo.totalCorrection,
+        longitudeCorrection: trueSolarTimeInfo.longitudeCorrection,
+        equationOfTime: trueSolarTimeInfo.equationOfTime,
+        explanation: trueSolarTimeInfo.explanation
+      } : undefined,
+      shichenWarning: shichenWarning || undefined,
       chart: {
         year: {
           ...chart.year,
@@ -499,7 +741,13 @@ export const generateBaziAnalysis = async (input: UserInput): Promise<BaziResult
       luckyColors: aiAnalysis.luckyColors || [],
       luckyNumbers: aiAnalysis.luckyNumbers || [],
       luckyDirections: aiAnalysis.luckyDirections || [],
-      analysis: aiAnalysis.analysis || {}
+      analysis: aiAnalysis.analysis || {},
+      // 大运流年信息
+      daYunStartAge,
+      daYun,
+      currentDaYun: currentDaYun || undefined,
+      // 格局信息
+      pattern: patternInfo
     };
 
     // Store for chat session
@@ -532,18 +780,25 @@ export const chatWithMaster = async (message: string): Promise<string> => {
   });
 
   try {
-    const response = await fetch(DEEPSEEK_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${DEEPSEEK_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: chatHistory,
-        temperature: 0.7
-      })
-    });
+    // 根据环境选择 API 调用方式
+    const response = USE_DIRECT_API
+      ? await fetch(DEEPSEEK_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${DEEPSEEK_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: "deepseek-chat",
+            messages: chatHistory,
+            temperature: 0.7
+          })
+        })
+      : await fetch(CHAT_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: chatHistory })
+        });
 
     if (!response.ok) {
       const errorData = await response.text();

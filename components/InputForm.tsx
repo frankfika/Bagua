@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Gender, UserInput } from '../types';
+import ShichenPicker from './ShichenPicker';
 
 interface InputFormProps {
   onSubmit: (data: UserInput) => void;
@@ -267,36 +268,24 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading }) => {
                     </div>
                 </div>
 
-                {/* Time Section */}
+                {/* Time Section - 时辰选择器 */}
                 <div className="flex flex-col items-center pt-2 w-full">
                     <label className="block text-stone-600 text-xs font-bold mb-4 uppercase tracking-wider text-center">
                         出生时间
                     </label>
-                    <div className="flex items-end gap-2 sm:gap-4 justify-center w-full">
-                        <div className="flex flex-col items-center flex-1 max-w-[90px]">
-                            <input
-                                type="number"
-                                placeholder="时"
-                                value={timeParts.hour}
-                                onChange={(e) => handleTimeChange('hour', e.target.value)}
-                                className="w-full text-center bg-transparent border-b-2 border-stone-300 text-2xl sm:text-3xl font-serif py-2 focus:border-red-seal focus:outline-none placeholder-stone-200 font-bold text-ink transition-colors"
-                            />
-                            <span className="text-[10px] text-stone-400 mt-1">时</span>
-                        </div>
-                        <span className="text-2xl sm:text-3xl text-stone-300 pb-3 font-bold">:</span>
-                        <div className="flex flex-col items-center flex-1 max-w-[90px]">
-                            <input
-                                type="number"
-                                placeholder="分"
-                                value={timeParts.minute}
-                                onChange={(e) => handleTimeChange('minute', e.target.value)}
-                                className="w-full text-center bg-transparent border-b-2 border-stone-300 text-2xl sm:text-3xl font-serif py-2 focus:border-red-seal focus:outline-none placeholder-stone-200 font-bold text-ink transition-colors"
-                            />
-                            <span className="text-[10px] text-stone-400 mt-1">分</span>
-                        </div>
-                    </div>
-                    <p className="text-[10px] text-stone-500 mt-4 sm:mt-6 text-center font-serif max-w-xs">
-                        * 输入当地时间 (0-24小时制)，系统将根据经纬度自动校正为<span className="text-red-800 font-bold">真太阳时</span>
+                    <ShichenPicker
+                        value={formData.birthTime}
+                        onChange={(time) => {
+                            setFormData(prev => ({ ...prev, birthTime: time }));
+                            if (time) {
+                                const [h, m] = time.split(':');
+                                setTimeParts({ hour: h, minute: m });
+                            }
+                        }}
+                        className="w-full"
+                    />
+                    <p className="text-[10px] text-stone-500 mt-4 text-center font-serif max-w-xs">
+                        * 系统将根据出生地经度自动校正为<span className="text-red-800 font-bold">真太阳时</span>
                     </p>
                 </div>
             </div>

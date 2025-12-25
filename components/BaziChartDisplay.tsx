@@ -1,10 +1,11 @@
 import React from 'react';
-import { BaziChartData, Pillar } from '../types';
+import { BaziChartData, Pillar, TrueSolarTimeInfo } from '../types';
 
 interface BaziChartDisplayProps {
   chart: BaziChartData;
   solarTime: string;
   solarTerm?: string;
+  trueSolarTimeInfo?: TrueSolarTimeInfo;
 }
 
 const TraditionalPillar: React.FC<{ title: string; pillar: Pillar; isDayMaster?: boolean }> = ({ title, pillar, isDayMaster }) => (
@@ -71,7 +72,7 @@ const TraditionalPillar: React.FC<{ title: string; pillar: Pillar; isDayMaster?:
   </div>
 );
 
-const BaziChartDisplay: React.FC<BaziChartDisplayProps> = ({ chart, solarTime, solarTerm }) => {
+const BaziChartDisplay: React.FC<BaziChartDisplayProps> = ({ chart, solarTime, solarTerm, trueSolarTimeInfo }) => {
   return (
     <div className="w-full relative">
         {/* Solar Time & Term Badge */}
@@ -79,6 +80,11 @@ const BaziChartDisplay: React.FC<BaziChartDisplayProps> = ({ chart, solarTime, s
              <div className="bg-stone-800 text-gold px-3 py-0.5 rounded-full text-[10px] sm:text-xs font-serif shadow-md whitespace-nowrap border border-gold/30">
                 真太阳时: {solarTime}
             </div>
+            {trueSolarTimeInfo && trueSolarTimeInfo.totalCorrection !== 0 && (
+                <div className="bg-amber-50/90 text-amber-700 px-2 py-0.5 rounded-sm text-[9px] font-serif border border-amber-200 shadow-sm">
+                    原时 {trueSolarTimeInfo.originalTime} → 修正 {trueSolarTimeInfo.totalCorrection > 0 ? '+' : ''}{Math.round(trueSolarTimeInfo.totalCorrection)}分钟
+                </div>
+            )}
             {solarTerm && (
                 <div className="bg-stone-100/90 text-stone-500 px-2 py-0.5 rounded-sm text-[9px] font-serif border border-stone-200 shadow-sm">
                     {solarTerm}

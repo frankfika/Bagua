@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserInput, BaziResult } from './types';
 import InputForm from './components/InputForm';
 import BaziChartDisplay from './components/BaziChartDisplay';
@@ -6,21 +6,33 @@ import { generateBaziAnalysis } from './services/geminiService';
 import ElementChart from './components/ElementChart';
 import AnalysisTabs from './components/AnalysisTabs';
 import ChatInterface from './components/ChatInterface';
+import DaYunDisplay from './components/DaYunDisplay';
+import HistoryPanel from './components/HistoryPanel';
+import { useHistory, HistoryRecord } from './hooks/useHistory';
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BaziResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [birthYear, setBirthYear] = useState<number>(0);
+  const [showHistory, setShowHistory] = useState(false);
+  const lastInputRef = useRef<UserInput | null>(null);
+  const { history, addRecord, removeRecord, clearHistory } = useHistory();
 
   // Load saved state on startup
   useEffect(() => {
     const savedResult = localStorage.getItem('zen_bazi_result');
+    const savedBirthYear = localStorage.getItem('zen_bazi_birthYear');
     if (savedResult) {
       try {
         setResult(JSON.parse(savedResult));
+        if (savedBirthYear) {
+          setBirthYear(parseInt(savedBirthYear));
+        }
       } catch (e) {
         console.error("Failed to load saved state", e);
         localStorage.removeItem('zen_bazi_result');
+        localStorage.removeItem('zen_bazi_birthYear');
       }
     }
   }, []);
@@ -36,14 +48,31 @@ const App: React.FC = () => {
     setLoading(true);
     setError(null);
     setResult(null);
+    lastInputRef.current = data;
     try {
+      // 保存出生年份
+      const year = parseInt(data.birthDate.split('-')[0]);
+      setBirthYear(year);
+      localStorage.setItem('zen_bazi_birthYear', year.toString());
+
       const analysis = await generateBaziAnalysis(data);
       setResult(analysis);
+      // 保存到历史记录
+      addRecord(data, analysis);
     } catch (e: any) {
       setError("排盘失败，请重试。" + (e.message || ""));
     } finally {
       setLoading(false);
     }
+  };
+
+  // 从历史记录加载
+  const handleLoadFromHistory = (record: HistoryRecord) => {
+    setResult(record.result);
+    const year = parseInt(record.input.birthDate.split('-')[0]);
+    setBirthYear(year);
+    lastInputRef.current = record.input;
+    setShowHistory(false);
   };
 
   const reset = () => {
@@ -82,11 +111,21 @@ const App: React.FC = () => {
                 <span className="text-[10px] text-stone-500 uppercase tracking-widest hidden sm:block">专业智能排盘</span>
              </div>
           </div>
-          {result && (
+          <div className="flex items-center gap-2">
+            {history.length > 0 && (
+              <button
+                onClick={() => setShowHistory(true)}
+                className="text-xs sm:text-sm text-stone-400 hover:text-white border border-stone-700 hover:border-stone-500 px-3 py-1.5 rounded hover:bg-stone-800 transition-all font-serif flex items-center gap-1"
+              >
+                <span className="text-xs">({history.length})</span> 历史
+              </button>
+            )}
+            {result && (
               <button onClick={reset} className="text-xs sm:text-sm text-stone-400 hover:text-white border border-stone-700 hover:border-stone-500 px-3 py-1.5 rounded hover:bg-stone-800 transition-all font-serif flex items-center gap-1">
                   <span>↺</span> 重排
               </button>
-          )}
+            )}
+          </div>
         </div>
       </header>
 
@@ -128,28 +167,45 @@ const App: React.FC = () => {
                                             <span className="w-1.5 h-6 bg-red-800 block rounded-sm"></span>
                                             八字命盘
                                         </h2>
-                                        <div className="flex items-center gap-2 mt-2">
+                                        <div className="flex flex-wrap items-center gap-2 mt-2">
                                             <span className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded border border-stone-200">
                                                 五行: {result.dayMasterElement}
                                             </span>
                                             <span className={`text-xs px-2 py-0.5 rounded border font-bold ${
-                                                result.strength.includes('Strong') || result.strength.includes('强') || result.strength.includes('旺') 
-                                                ? 'bg-red-50 text-red-800 border-red-100' 
+                                                result.strength.includes('Strong') || result.strength.includes('强') || result.strength.includes('旺')
+                                                ? 'bg-red-50 text-red-800 border-red-100'
                                                 : 'bg-blue-50 text-blue-800 border-blue-100'
                                             }`}>
                                                 {result.strength}
                                             </span>
+                                            {result.pattern && (
+                                                <span className={`text-xs px-2 py-0.5 rounded border font-bold ${
+                                                    result.pattern.level === 'high'
+                                                    ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                                    : result.pattern.level === 'medium'
+                                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                                    : 'bg-stone-50 text-stone-600 border-stone-200'
+                                                }`}>
+                                                    {result.pattern.mainPattern}
+                                                </span>
+                                            )}
                                         </div>
+                                        {result.pattern && result.pattern.description && (
+                                            <p className="text-xs text-stone-500 mt-2 max-w-md">
+                                                {result.pattern.description}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="text-right hidden sm:block">
                                         <div className="text-4xl font-serif text-stone-800">{result.dayMaster}</div>
                                         <div className="text-[10px] text-stone-400 uppercase tracking-widest">日元 (Day Master)</div>
                                     </div>
                                 </div>
-                                <BaziChartDisplay 
-                                    chart={result.chart} 
-                                    solarTime={result.solarTimeAdjusted} 
+                                <BaziChartDisplay
+                                    chart={result.chart}
+                                    solarTime={result.solarTimeAdjusted}
                                     solarTerm={result.solarTerm}
+                                    trueSolarTimeInfo={result.trueSolarTimeInfo}
                                 />
                              </div>
                          </div>
@@ -160,6 +216,27 @@ const App: React.FC = () => {
                         <ElementChart elements={result.fiveElements} />
                     </div>
                 </div>
+
+                {/* 大运流年显示 */}
+                {result.daYun && result.daYun.length > 0 && (
+                    <div className="bg-[#fdfbf7] rounded-lg shadow-sm border border-stone-300 p-4 sm:p-6 relative overflow-hidden">
+                        <div className="absolute inset-0 opacity-40 pointer-events-none"
+                             style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/rice-paper.png")' }}>
+                        </div>
+                        <div className="relative z-10">
+                            <h2 className="text-xl sm:text-2xl font-serif text-stone-800 font-bold flex items-center gap-2 mb-6">
+                                <span className="w-1.5 h-6 bg-red-800 block rounded-sm"></span>
+                                大运流年
+                            </h2>
+                            <DaYunDisplay
+                                daYun={result.daYun}
+                                daYunStartAge={result.daYunStartAge || 0}
+                                currentDaYun={result.currentDaYun}
+                                birthYear={birthYear}
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {/* Bottom Section: Analysis Tabs & Chat */}
                 <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
@@ -185,6 +262,17 @@ const App: React.FC = () => {
             </div>
         )}
       </main>
+
+      {/* History Panel */}
+      {showHistory && (
+        <HistoryPanel
+          history={history}
+          onSelect={handleLoadFromHistory}
+          onRemove={removeRecord}
+          onClear={clearHistory}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 };
