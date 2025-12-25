@@ -27,6 +27,32 @@ export interface AnalysisSection {
   predictions?: string[]; // Specific future predictions (used in Fortune/Career)
   advice?: string[]; // Actionable advice
   score?: number; // 0-100 score for this aspect
+  // 扩展字段（可选）
+  strengths?: string[];
+  weaknesses?: string[];
+  suitableIndustries?: string[];
+  unsuitableIndustries?: string[];
+  wealthType?: string;
+  spouseCharacteristics?: string[];
+  marriageTiming?: string;
+  weakOrgans?: string[];
+  preventionAdvice?: string[];
+  currentLuckPillar?: string;
+  keyYears?: string[];
+}
+
+// 十神组合分析
+export interface TenGodAnalysis {
+  mainCombination: string;
+  characteristics: string[];
+  advantages: string[];
+  disadvantages: string[];
+}
+
+// 刑冲合害分析
+export interface RelationsAnalysis {
+  summary: string;
+  details: string[];
 }
 
 // 流年信息
@@ -68,6 +94,7 @@ export interface BaziResult {
   dayMaster: string; // The Day Stem
   dayMasterElement: string; // Wood, Fire, Earth, Metal, Water
   strength: string; // Weak, Strong, Balanced, etc.
+  strengthAnalysis?: string; // 日主强弱详细分析
   chart: BaziChartData;
   solarTimeAdjusted: string; // The time actually used after adjustment
   solarTerm: string; // The Solar Term (Jie Qi) referencing the month
@@ -86,11 +113,20 @@ export interface BaziResult {
     health: AnalysisSection;
     globalFortune: AnalysisSection; // Replaced currentYearFortune with broader outlook
   };
-  luckyElements: string[]; // Elements that help the chart
-  unluckyElements: string[];
+  luckyElements: string[]; // Elements that help the chart (喜神)
+  usefulElements?: string[]; // 用神
+  unluckyElements: string[]; // 忌神
+  enemyElements?: string[]; // 仇神
+  elementAnalysis?: string; // 喜忌用神取用依据
   luckyColors: string[];
   luckyNumbers: string[];
   luckyDirections: string[];
+
+  // 十神组合分析
+  tenGodAnalysis?: TenGodAnalysis;
+
+  // 刑冲合害分析
+  relationsAnalysis?: RelationsAnalysis;
 
   // 新增字段
   trueSolarTimeInfo?: TrueSolarTimeInfo; // 真太阳时详情

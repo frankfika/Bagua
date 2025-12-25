@@ -9,6 +9,7 @@ import {
   getShenShaInfo
 } from "../knowledge/shensha";
 import { determinePattern, judgeDayMasterStrength } from "../utils/pattern";
+import { analyzeRelations, RelationResult } from "../utils/relations";
 
 // API 端点 - 生产环境使用 Vercel Edge Function，开发环境可直接调用
 const API_BASE_URL = import.meta.env.PROD ? '' : '';
@@ -533,121 +534,238 @@ export const generateBaziAnalysis = async (input: UserInput): Promise<BaziResult
   ];
   const shenShaStr = [...new Set(allShenSha)].join("、") || "无明显神煞";
 
-  // 专业版 AI Prompt - 混合模式（默认通俗，带专业解释）
+  // 计算刑冲合害
+  const relations = analyzeRelations(
+    chart.year.stem, chart.year.branch,
+    chart.month.stem, chart.month.branch,
+    chart.day.stem, chart.day.branch,
+    chart.hour.stem, chart.hour.branch
+  );
+
+  // 构建十神配置分析
+  const allGods = [
+    ...chart.year.gods,
+    ...chart.month.gods,
+    ...chart.hour.gods,
+    ...(chart.year.hiddenStemGods || []),
+    ...(chart.month.hiddenStemGods || []),
+    ...(chart.day.hiddenStemGods || []),
+    ...(chart.hour.hiddenStemGods || [])
+  ].filter(g => g && g !== "日主");
+
+  const godCount: Record<string, number> = {};
+  allGods.forEach(g => { godCount[g] = (godCount[g] || 0) + 1; });
+  const godDistribution = Object.entries(godCount)
+    .sort((a, b) => b[1] - a[1])
+    .map(([god, count]) => `${god}×${count}`)
+    .join("、");
+
+  // 专业版 AI Prompt - 深度命理分析
   const prompt = `
 # 角色定位
-你是一位精通子平八字命理的资深命理师，拥有40年实战经验。你的分析特点：
-- 表达方式：通俗易懂，但关键处使用专业术语并附解释
-- 分析深度：从命局结构、格局、十神配置等维度系统分析
-- 判断依据：每个结论都要说明推导依据，让用户理解"为什么"
+你是一位精通子平八字命理的资深命理师，师承盲派与传统子平两大流派，拥有40年实战经验。
+你的分析特点：
+- 严谨专业：每个结论必须有明确的命理依据，引用具体的干支组合
+- 层次分明：先定格局、再论喜忌、后断吉凶
+- 细致入微：关注藏干透出、十神配置、刑冲合害的微妙作用
+- 实用可行：建议要具体到行业、方位、时间节点
 
-# 命主信息
+# 命主基本信息
 - 姓名: ${input.name}
-- 性别: ${input.gender === 'Male' ? '乾造（男）' : '坤造（女）'}
-- 出生日期: ${input.birthDate}
-- 出生时间: ${trueSolarTimeInfo ? `${trueSolarTimeInfo.trueSolarTime}（真太阳时，${trueSolarTimeInfo.explanation}）` : input.birthTime}
-- 出生地点: ${locationString}
+- 性别: ${input.gender === 'Male' ? '乾造（男命）' : '坤造（女命）'}
+- 出生: ${input.birthDate} ${trueSolarTimeInfo ? trueSolarTimeInfo.trueSolarTime : input.birthTime}
+- 真太阳时: ${trueSolarTimeInfo ? `已校正（${trueSolarTimeInfo.explanation}）` : "未校正"}
+- 出生地: ${locationString}
 - 农历: ${lunarDate}
-- 节气: ${solarTerm}
+- 节气: ${solarTerm}（月令以节气为准）
 
-# 八字排盘（已精确计算）
-**四柱干支：** ${baziString}
-- 年柱: ${chart.year.stem}${chart.year.branch} (${chart.year.element}) | 天干十神: ${chart.year.gods.join(",")} | 藏干: ${chart.year.hiddenStems?.join(",")}
-- 月柱: ${chart.month.stem}${chart.month.branch} (${chart.month.element}) | 天干十神: ${chart.month.gods.join(",")} | 藏干: ${chart.month.hiddenStems?.join(",")}
-- 日柱: ${chart.day.stem}${chart.day.branch} (${chart.day.element}) | 日主 | 藏干: ${chart.day.hiddenStems?.join(",")}
-- 时柱: ${chart.hour.stem}${chart.hour.branch} (${chart.hour.element}) | 天干十神: ${chart.hour.gods.join(",")} | 藏干: ${chart.hour.hiddenStems?.join(",")}
+# 八字命盘（已精确计算）
 
-**藏干十神：**
-    ${hiddenGodsStr}
+## 四柱排盘
+\`\`\`
+        年柱      月柱      日柱      时柱
+天干    ${chart.year.stem}        ${chart.month.stem}        ${chart.day.stem}        ${chart.hour.stem}
+地支    ${chart.year.branch}        ${chart.month.branch}        ${chart.day.branch}        ${chart.hour.branch}
+纳音    ${chart.year.element}    ${chart.month.element}    ${chart.day.element}    ${chart.hour.element}
+\`\`\`
 
-**日主信息：** ${dayStem}${dayMasterElement}日主
-**五行分布：** 木${fiveElements.wood}% 火${fiveElements.fire}% 土${fiveElements.earth}% 金${fiveElements.metal}% 水${fiveElements.water}%
+## 十神配置
+- 年干 ${chart.year.stem}: ${chart.year.gods.join("") || "—"}
+- 月干 ${chart.month.stem}: ${chart.month.gods.join("") || "—"}（月令提纲）
+- 日干 ${chart.day.stem}: 日主
+- 时干 ${chart.hour.stem}: ${chart.hour.gods.join("") || "—"}
 
-# 格局判定（已计算）
-- 主格局: ${patternInfo.mainPattern}
-- 辅助格局: ${patternInfo.subPatterns.join("、") || "无"}
-- 格局说明: ${patternInfo.description}
+## 藏干与藏干十神
+- 年支 ${chart.year.branch} 藏: ${chart.year.hiddenStems?.join("、") || "—"} → 十神: ${chart.year.hiddenStemGods?.join("、") || "—"}
+- 月支 ${chart.month.branch} 藏: ${chart.month.hiddenStems?.join("、") || "—"} → 十神: ${chart.month.hiddenStemGods?.join("、") || "—"}（月令藏干最重要）
+- 日支 ${chart.day.branch} 藏: ${chart.day.hiddenStems?.join("、") || "—"} → 十神: ${chart.day.hiddenStemGods?.join("、") || "—"}（日支为夫妻宫）
+- 时支 ${chart.hour.branch} 藏: ${chart.hour.hiddenStems?.join("、") || "—"} → 十神: ${chart.hour.hiddenStemGods?.join("、") || "—"}
 
-# 神煞（已计算）
-${shenShaStr}
+## 十神分布统计
+${godDistribution || "需分析"}
+
+## 五行力量分布
+木 ${fiveElements.wood}% | 火 ${fiveElements.fire}% | 土 ${fiveElements.earth}% | 金 ${fiveElements.metal}% | 水 ${fiveElements.water}%
+
+# 命局结构分析（已计算）
+
+## 格局判定
+- **主格局**: ${patternInfo.mainPattern}
+- **辅格局**: ${patternInfo.subPatterns.join("、") || "无"}
+- **格局说明**: ${patternInfo.description}
+- **格局层次**: ${patternInfo.level === 'high' ? '上格（贵格）' : patternInfo.level === 'medium' ? '中格' : '普通格局'}
+
+## 刑冲合害关系
+${relations.summary}
+${relations.tianganHe.length > 0 ? `- 天干合: ${relations.tianganHe.map(h => `${h.stems.join("")}合化${h.element}（${h.position}柱）`).join("、")}` : ""}
+${relations.liuHe.length > 0 ? `- 地支六合: ${relations.liuHe.map(h => `${h.branches.join("")}合${h.element}（${h.position}柱）`).join("、")}` : ""}
+${relations.sanHe.length > 0 ? `- 三合局: ${relations.sanHe.map(h => `${h.branches.join("")}${h.complete ? "三合" : "半合"}${h.element}局`).join("、")}` : ""}
+${relations.sanHui.length > 0 ? `- 三会局: ${relations.sanHui.map(h => `${h.branches.join("")}三会${h.element}局`).join("、")}` : ""}
+${relations.liuChong.length > 0 ? `- 六冲: ${relations.liuChong.map(c => `${c.branches.join("")}冲（${c.position}柱）`).join("、")}` : ""}
+${relations.liuHai.length > 0 ? `- 六害: ${relations.liuHai.map(h => `${h.branches.join("")}害（${h.position}柱）`).join("、")}` : ""}
+${relations.xing.length > 0 ? `- 刑: ${relations.xing.map(x => `${x.branches.join("")}${x.type}`).join("、")}` : ""}
+
+## 空亡
+- 日柱空亡: ${relations.kongWang.join("、") || "无"}
+${relations.kongWangPositions.length > 0 ? `- 命中空亡: ${relations.kongWangPositions.map(k => `${k.position}支${k.branch}落空亡`).join("、")}` : ""}
+
+## 神煞
+- 年柱: ${chart.year.shenSha?.join("、") || "无"}
+- 月柱: ${chart.month.shenSha?.join("、") || "无"}
+- 日柱: ${chart.day.shenSha?.join("、") || "无"}
+- 时柱: ${chart.hour.shenSha?.join("、") || "无"}
 
 # 大运信息
-- 起运年龄: ${daYunStartAge}岁起运
+- 起运: ${daYunStartAge}岁
 - ${currentDaYunStr}
-- 大运轨迹: ${daYunListStr}
+- 大运序列: ${daYunListStr}
+${daYun.slice(0, 8).map((d, i) => `  ${i + 1}. ${d.ganZhi}运 (${d.startAge}-${d.endAge}岁, ${d.startYear}-${d.endYear}年)`).join("\n")}
 
-# 分析要求
+# 分析要求（重要！）
 
-请基于以上信息进行深入分析。注意：
-1. **日主强弱**：结合月令（${chart.month.branch}月）、四柱干支综合判断
-2. **喜忌用神**：根据日主强弱和格局需求，明确说明取用依据
-3. **每个结论必须说明依据**：例如"因月令${chart.month.branch}为X，日主得/失令，故判断身强/弱"
-4. **流年预测需具体**：2025-2028年逐年分析，结合大运和流年干支
-5. **建议要实用可行**：不要笼统的"多休息"，要具体到方向/行业/时间
+请按照以下框架进行**严谨、专业、深入**的分析：
 
-    请以 JSON 格式输出，结构如下：
-    {
-      "strength": "日主强弱判断（如：身强/身弱/中和）",
-      "luckyElements": ["喜用神五行"],
-      "unluckyElements": ["忌神五行"],
-      "luckyColors": ["幸运颜色"],
-      "luckyNumbers": ["幸运数字"],
-      "luckyDirections": ["幸运方位"],
-      "shenSha": {
-        "year": ["年柱神煞"],
-        "month": ["月柱神煞"],
-        "day": ["日柱神煞"],
-        "hour": ["时柱神煞"]
-      },
-      "analysis": {
-        "personality": {
-          "title": "性格分析",
-          "summary": "性格概述",
-          "details": ["详细分析点"],
-          "advice": ["性格建议"],
-          "score": 0-100分
-        },
-        "career": {
-          "title": "事业运势",
-          "summary": "事业概述",
-          "details": ["详细分析点"],
-          "predictions": ["2025年...", "2026年..."],
-          "advice": ["事业建议"],
-          "score": 0-100分
-        },
-        "wealth": {
-          "title": "财运分析",
-          "summary": "财运概述",
-          "details": ["详细分析点"],
-          "predictions": ["2025年...", "2026年..."],
-          "advice": ["理财建议"],
-          "score": 0-100分
-        },
-        "relationships": {
-          "title": "感情婚姻",
-          "summary": "感情概述",
-          "details": ["详细分析点"],
-          "predictions": ["2025年...", "2026年..."],
-          "advice": ["感情建议"],
-          "score": 0-100分
-        },
-        "health": {
-          "title": "健康运势",
-          "summary": "健康概述",
-          "details": ["详细分析点"],
-          "advice": ["健康建议"],
-          "score": 0-100分
-        },
-        "globalFortune": {
-          "title": "综合运势",
-          "summary": "整体运势概述",
-          "details": ["详细分析点"],
-          "predictions": ["2025年...", "2026年...", "2027年...", "2028年..."],
-          "score": 0-100分
-        }
-      }
+## 第一步：定日主强弱
+1. 月令（${chart.month.branch}）对日主${dayStem}${dayMasterElement}的作用（得令/失令/平和）
+2. 四柱干支对日主的生扶克泄情况
+3. 地支藏干的根气分析
+4. 综合判断：身强/身弱/中和/从格
+
+## 第二步：定喜忌用神
+1. 根据日主强弱和格局需求确定喜用神
+2. 说明取用依据（扶抑/通关/调候/从势）
+3. 明确忌神和仇神
+
+## 第三步：十神组合分析
+分析命局中重要的十神组合及其含义：
+- 食伤生财：有无此组合？对财运的影响
+- 官印相生：有无此组合？对事业的影响
+- 伤官见官：有无此组合？如何化解
+- 财官印的配置：是否得当
+
+## 第四步：刑冲合害的具体影响
+${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析其对命主各方面的具体影响` : "命局较为平和"}
+
+## 第五步：神煞的实际应用
+结合命局喜忌分析神煞的实际作用（吉神逢生为吉，凶神逢制为吉）
+
+## 第六步：大运流年预测
+- 2025乙巳年：详细分析（结合当前大运${currentDaYun?.ganZhi || ""}）
+- 2026丙午年：详细分析
+- 2027丁未年：详细分析
+- 2028戊申年：详细分析
+
+## 输出要求
+每个分析点必须引用具体的干支组合作为依据，不要空泛议论。
+例如："月令${chart.month.branch}为日主${dayStem}的X地，日主失令；但年干${chart.year.stem}为X，时支${chart.hour.branch}藏X，日主得X帮扶，综合判断身X偏X。"
+
+请以 JSON 格式输出，结构如下：
+{
+  "strength": "身强/身弱/中和/从X格",
+  "strengthAnalysis": "日主强弱的详细分析依据（引用具体干支）",
+  "luckyElements": ["喜神五行"],
+  "usefulElements": ["用神五行"],
+  "unluckyElements": ["忌神五行"],
+  "enemyElements": ["仇神五行"],
+  "elementAnalysis": "喜忌用神的取用依据",
+  "luckyColors": ["幸运颜色及原因"],
+  "luckyNumbers": ["幸运数字及原因"],
+  "luckyDirections": ["幸运方位及原因"],
+  "tenGodAnalysis": {
+    "mainCombination": "主要十神组合（如食伤生财、官印相生）",
+    "characteristics": ["十神配置特点分析"],
+    "advantages": ["十神组合带来的优势"],
+    "disadvantages": ["十神组合的不足"]
+  },
+  "relationsAnalysis": {
+    "summary": "刑冲合害总体评价",
+    "details": ["各组刑冲合害的具体影响"]
+  },
+  "analysis": {
+    "personality": {
+      "title": "性格命理分析",
+      "summary": "性格特点概述（基于日主和十神）",
+      "details": ["详细分析点（每点需有命理依据）"],
+      "strengths": ["性格优势"],
+      "weaknesses": ["性格弱点"],
+      "advice": ["针对性的改善建议"],
+      "score": 75
+    },
+    "career": {
+      "title": "事业官运分析",
+      "summary": "事业格局概述",
+      "details": ["详细分析点（分析官星、印星配置）"],
+      "suitableIndustries": ["适合的行业（基于喜用神五行）"],
+      "unsuitableIndustries": ["不适合的行业"],
+      "predictions": ["2025年事业...", "2026年事业...", "2027年...", "2028年..."],
+      "advice": ["事业发展建议"],
+      "score": 70
+    },
+    "wealth": {
+      "title": "财运分析",
+      "summary": "财运格局概述（正财偏财配置）",
+      "details": ["详细分析点（分析财星与日主关系）"],
+      "wealthType": "正财型/偏财型/财官双美型",
+      "predictions": ["2025年财运...", "2026年财运...", "2027年...", "2028年..."],
+      "advice": ["理财投资建议"],
+      "score": 68
+    },
+    "relationships": {
+      "title": "感情婚姻分析",
+      "summary": "婚姻宫位分析（日支为夫妻宫）",
+      "details": ["详细分析点（分析配偶星和婚姻宫）"],
+      "spouseCharacteristics": ["配偶特征推断"],
+      "marriageTiming": "适婚年龄段",
+      "predictions": ["2025年感情...", "2026年感情...", "2027年...", "2028年..."],
+      "advice": ["感情婚姻建议"],
+      "score": 72
+    },
+    "health": {
+      "title": "健康分析",
+      "summary": "健康总体评价（基于五行偏枯）",
+      "details": ["详细分析点（五行过旺或不及对应的脏腑）"],
+      "weakOrgans": ["易出问题的脏腑器官"],
+      "preventionAdvice": ["养生保健建议"],
+      "advice": ["健康调理建议"],
+      "score": 65
+    },
+    "globalFortune": {
+      "title": "大运流年综合预测",
+      "summary": "整体命运走势概述",
+      "details": ["命局层次分析", "一生运势起伏规律"],
+      "currentLuckPillar": "当前大运${currentDaYun?.ganZhi || ""}分析",
+      "predictions": [
+        "2025乙巳年：（蛇年，天干乙木，地支巳火）...",
+        "2026丙午年：（马年，天干丙火，地支午火）...",
+        "2027丁未年：（羊年，天干丁火，地支未土）...",
+        "2028戊申年：（猴年，天干戊土，地支申金）..."
+      ],
+      "keyYears": ["人生关键转折年份"],
+      "score": 70
     }
-  `;
+  }
+}
+`;
 
   try {
     const messages = [
@@ -705,6 +823,7 @@ ${shenShaStr}
       dayMaster: dayStem,
       dayMasterElement: dayMasterElement,
       strength: aiAnalysis.strength || "待分析",
+      strengthAnalysis: aiAnalysis.strengthAnalysis || "",
       solarTimeAdjusted: trueSolarTimeInfo?.trueSolarTime || input.birthTime,
       solarTerm: solarTerm,
       // 真太阳时信息
@@ -720,27 +839,38 @@ ${shenShaStr}
       chart: {
         year: {
           ...chart.year,
-          shenSha: aiAnalysis.shenSha?.year || []
+          shenSha: chart.year.shenSha || []
         },
         month: {
           ...chart.month,
-          shenSha: aiAnalysis.shenSha?.month || []
+          shenSha: chart.month.shenSha || []
         },
         day: {
           ...chart.day,
-          shenSha: aiAnalysis.shenSha?.day || []
+          shenSha: chart.day.shenSha || []
         },
         hour: {
           ...chart.hour,
-          shenSha: aiAnalysis.shenSha?.hour || []
+          shenSha: chart.hour.shenSha || []
         }
       },
       fiveElements: fiveElements,
+      // 喜忌用神
       luckyElements: aiAnalysis.luckyElements || [],
+      usefulElements: aiAnalysis.usefulElements || [],
       unluckyElements: aiAnalysis.unluckyElements || [],
+      enemyElements: aiAnalysis.enemyElements || [],
+      elementAnalysis: aiAnalysis.elementAnalysis || "",
       luckyColors: aiAnalysis.luckyColors || [],
       luckyNumbers: aiAnalysis.luckyNumbers || [],
       luckyDirections: aiAnalysis.luckyDirections || [],
+      // 十神组合分析
+      tenGodAnalysis: aiAnalysis.tenGodAnalysis || undefined,
+      // 刑冲合害分析
+      relationsAnalysis: aiAnalysis.relationsAnalysis || {
+        summary: relations.summary,
+        details: []
+      },
       analysis: aiAnalysis.analysis || {},
       // 大运流年信息
       daYunStartAge,
