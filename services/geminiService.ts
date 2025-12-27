@@ -779,7 +779,7 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
       }
     ];
 
-    // 根据环境选择 API 调用方式 - 使用流式请求避免超时
+    // 使用流式请求避免超时
     const response = USE_DIRECT_API
       ? await fetch(DEEPSEEK_API_URL, {
           method: "POST",
@@ -791,8 +791,7 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
             model: "deepseek-chat",
             messages,
             temperature: 0.3,
-            stream: true,
-            response_format: { type: "json_object" }
+            stream: true
           })
         })
       : await fetch(ANALYZE_API_URL, {
@@ -801,13 +800,13 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
           body: JSON.stringify({
             messages,
             temperature: 0.3,
-            stream: true,
-            response_format: { type: "json_object" }
+            stream: true
           })
         });
 
     if (!response.ok) {
       const errorData = await response.text();
+      console.error("API response error:", response.status, errorData);
       throw new Error(`DeepSeek API error: ${response.status} - ${errorData}`);
     }
 
@@ -815,18 +814,21 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
     let resultText = "";
+    let buffer = "";
 
     if (reader) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // 保留不完整的行
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith("data: ")) {
+            const data = trimmedLine.slice(6);
             if (data === "[DONE]") continue;
             try {
               const parsed = JSON.parse(data);
@@ -834,8 +836,8 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
               if (content) {
                 resultText += content;
               }
-            } catch {
-              // 忽略解析错误
+            } catch (e) {
+              // 忽略解析错误，可能是不完整的 JSON
             }
           }
         }
@@ -843,10 +845,30 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
     }
 
     if (!resultText) {
+      console.error("No result text received from API");
       throw new Error("AI 未能生成结果。");
     }
 
-    const aiAnalysis = JSON.parse(resultText);
+    // 尝试提取 JSON（AI 可能返回带有其他文本的响应）
+    let aiAnalysis;
+    try {
+      // 先尝试直接解析
+      aiAnalysis = JSON.parse(resultText);
+    } catch (e) {
+      // 尝试提取 JSON 部分
+      const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          aiAnalysis = JSON.parse(jsonMatch[0]);
+        } catch (e2) {
+          console.error("Failed to parse JSON:", resultText.substring(0, 500));
+          throw new Error("AI 返回的格式无法解析");
+        }
+      } else {
+        console.error("No JSON found in response:", resultText.substring(0, 500));
+        throw new Error("AI 返回的格式无法解析");
+      }
+    }
 
     // 合并精确计算的八字和 AI 分析结果
     const data: BaziResult = {
