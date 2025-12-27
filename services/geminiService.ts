@@ -779,7 +779,7 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
       }
     ];
 
-    // 根据环境选择 API 调用方式
+    // 根据环境选择 API 调用方式 - 使用流式请求避免超时
     const response = USE_DIRECT_API
       ? await fetch(DEEPSEEK_API_URL, {
           method: "POST",
@@ -791,6 +791,7 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
             model: "deepseek-chat",
             messages,
             temperature: 0.3,
+            stream: true,
             response_format: { type: "json_object" }
           })
         })
@@ -800,6 +801,7 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
           body: JSON.stringify({
             messages,
             temperature: 0.3,
+            stream: true,
             response_format: { type: "json_object" }
           })
         });
@@ -809,8 +811,36 @@ ${relations.summary ? `针对命局中存在的 "${relations.summary}"，分析�
       throw new Error(`DeepSeek API error: ${response.status} - ${errorData}`);
     }
 
-    const result = await response.json();
-    const resultText = result.choices?.[0]?.message?.content;
+    // 处理流式响应
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let resultText = "";
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                resultText += content;
+              }
+            } catch {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    }
 
     if (!resultText) {
       throw new Error("AI 未能生成结果。");

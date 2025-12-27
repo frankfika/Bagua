@@ -1,4 +1,4 @@
-// Vercel Edge Function - DeepSeek API 代理
+// Vercel Edge Function - DeepSeek API 代理 (流式版)
 // 保护 API Key 不暴露在前端
 
 export const config = {
@@ -19,7 +19,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { messages, temperature = 0.3, response_format } = body;
+    const { messages, temperature = 0.3, response_format, stream = false } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: 'Invalid messages format' }), {
@@ -37,6 +37,46 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
+    // 流式请求
+    if (stream) {
+      const response = await fetch(DEEPSEEK_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages,
+          temperature,
+          stream: true,
+          ...(response_format && { response_format }),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return new Response(JSON.stringify({
+          error: `DeepSeek API error: ${response.status}`,
+          details: errorText
+        }), {
+          status: response.status,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // 直接转发流式响应
+      return new Response(response.body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    // 非流式请求
     const response = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
       headers: {
