@@ -1,47 +1,82 @@
-# 禅·八字排盘
+<div align="center">
 
-一款专业的八字命理分析应用，结合传统命理学与现代 AI 技术，提供精准的八字排盘与命理解读服务。
+# 禅 · 八字排盘
 
-## 功能特性
+**传统命理智慧与现代 AI 的融合之作**
 
-- 精准八字排盘：根据出生时间自动计算四柱八字
-- 五行分析：详细的五行旺衰分析与图表展示
-- AI 命理解读：基于 DeepSeek 大模型的专业命理分析
-- 农历转换：支持阳历/农历日期转换
+[![Live Demo](https://img.shields.io/badge/Live-Demo-gold?style=for-the-badge)](https://bagua.node404.fun)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite)](https://vitejs.dev/)
+[![DeepSeek](https://img.shields.io/badge/AI-DeepSeek-blue?style=flat-square)](https://deepseek.com/)
 
-## 本地运行
+</div>
 
-**环境要求：** Node.js 18+
+---
 
-1. 安装依赖：
-   ```bash
-   npm install
-   ```
+## 缘起
 
-2. 配置环境变量：
-   在 `.env` 文件中设置 DeepSeek API Key：
-   ```
-   VITE_DEEPSEEK_API_KEY=your_api_key
-   ```
+八字命理，源于《易经》，历经千年传承。**禅·八字排盘** 以禅意美学为设计语言，将古老的命理智慧与现代 AI 技术相融合，为你呈现一份独特的命理分析体验。
 
-3. 启动开发服务器：
-   ```bash
-   npm run dev
-   ```
+## 核心功能
+
+**精准排盘** — 根据出生时间自动推算年柱、月柱、日柱、时柱，支持阳历/农历智能转换
+
+**五行分析** — 可视化展示五行分布与旺衰格局，直观呈现命局特征
+
+**AI 命理师** — 基于 DeepSeek 大模型的智能分析，提供专业的命理解读与人生建议
+
+**禅意体验** — 水墨风格界面设计，宣纸纹理质感，沉浸式的东方美学体验
+
+## 快速开始
+
+```bash
+# 克隆项目
+git clone https://github.com/frankfika/Bagua.git
+
+# 安装依赖
+npm install
+
+# 配置 API Key（在 .env 文件中）
+VITE_DEEPSEEK_API_KEY=your_api_key
+
+# 启动开发服务器
+npm run dev
+```
 
 ## 技术栈
 
-- React 19
-- Vite
-- TypeScript
-- lunar-javascript（农历计算）
-- Recharts（图表展示）
-- DeepSeek API（AI 分析）
+| 类别 | 技术 |
+|------|------|
+| 框架 | React 19 + TypeScript |
+| 构建 | Vite 6 |
+| 样式 | Tailwind CSS |
+| 农历 | lunar-javascript |
+| 图表 | Recharts |
+| AI | DeepSeek API |
+| 部署 | Vercel Edge Functions |
 
-## 构建部署
+## 项目结构
 
-```bash
-npm run build
+```
+├── api/            # Vercel Edge Functions
+├── components/     # React 组件
+├── hooks/          # 自定义 Hooks
+├── services/       # 服务层
+├── utils/          # 工具函数
+└── knowledge/      # 命理知识库
 ```
 
-构建产物位于 `dist/` 目录，可部署至任意静态托管服务。
+## 致谢
+
+- [lunar-javascript](https://github.com/6tail/lunar-javascript) - 强大的农历库
+- [DeepSeek](https://deepseek.com/) - AI 能力支持
+
+---
+
+<div align="center">
+
+**以禅心观命理，用智慧启人生**
+
+Made with ❤️ by [Frank](https://github.com/frankfika)
+
+</div>
