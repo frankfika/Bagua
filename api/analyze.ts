@@ -3,6 +3,7 @@
 
 export const config = {
   runtime: 'edge',
+  maxDuration: 60,
 };
 
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
